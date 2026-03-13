@@ -1,4 +1,4 @@
--- Vive la france et credit to ubundows_78 31/07/2024
+-- ubundows_78 on dc
 
 local TILE_SIZE = 32
 local TEX_SIZE = 16
@@ -44,7 +44,7 @@ local jumpBufferTimer = 0
 local coyoteTimer = 0
 
 local function isJumpKey(key)
-    return key == "space" or key == "z" or key == "up"
+    return key == "space" or key == "z" or key == "up" or key == "w"
 end
 
 local function clamp01(v)
@@ -404,7 +404,7 @@ end
 
 function love.update(dt)
     local dirX = 0
-    if love.keyboard.isDown("q", "left") then
+    if love.keyboard.isDown("q", "a", "left") then
         dirX = dirX - 1
     end
     if love.keyboard.isDown("d", "right") then
