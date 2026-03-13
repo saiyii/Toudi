@@ -31,6 +31,7 @@ local player = {
     w = 28,
     h = 44,
     speed = 220,
+    vx = 0,
     vy = 0,
     gravity = 1800,
     jumpForce = 620,
@@ -300,26 +301,43 @@ local function buildTextures()
 end
 
 local function moveAndCollide(dt, dirX)
-    local vx = dirX * player.speed
-    local newX = player.x + vx * dt
+    local accel = player.onGround and 4200 or 2600
+    local friction = player.onGround and 3600 or 600
 
-    if vx > 0 then
+    if dirX ~= 0 then
+        player.vx = player.vx + dirX * accel * dt
+    else
+        if player.vx > 0 then
+            player.vx = math.max(0, player.vx - friction * dt)
+        elseif player.vx < 0 then
+            player.vx = math.min(0, player.vx + friction * dt)
+        end
+    end
+
+    if player.vx > player.speed then player.vx = player.speed end
+    if player.vx < -player.speed then player.vx = -player.speed end
+
+    local newX = player.x + player.vx * dt
+
+    if player.vx > 0 then
         local tileX = worldToTileX(newX + player.w - 1)
         local topTile = worldToTileY(player.y + 1)
         local bottomTile = worldToTileY(player.y + player.h - 2)
         for ty = topTile, bottomTile do
             if isSolid(getTile(tileX, ty)) then
                 newX = (tileX - 1) * TILE_SIZE - player.w
+                player.vx = 0
                 break
             end
         end
-    elseif vx < 0 then
+    elseif player.vx < 0 then
         local tileX = worldToTileX(newX)
         local topTile = worldToTileY(player.y + 1)
         local bottomTile = worldToTileY(player.y + player.h - 2)
         for ty = topTile, bottomTile do
             if isSolid(getTile(tileX, ty)) then
                 newX = tileX * TILE_SIZE
+                player.vx = 0
                 break
             end
         end
