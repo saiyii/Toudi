@@ -3,12 +3,15 @@
 local TILE_SIZE = 32
 local TEX_SIZE = 16
 local TILE_SCALE = TILE_SIZE / TEX_SIZE
+local CHUNK_SIZE = 64
 
 local TILE_AIR = 0
 local TILE_GRASS_DIRT = 1
 local TILE_DIRT = 2
 local TILE_STONE = 3
 local TILE_BEDROCK = 4
+local TILE_WOOD = 5
+local TILE_LEAVES = 6
 
 local SURFACE_BASE = 14
 local SURFACE_VARIATION = 7
@@ -18,6 +21,7 @@ local worldSeed = 0
 local editedTiles = {}
 local surfaceCache = {}
 local textures = {}
+local chunks = {}
 
 local camera = { x = 0, y = 0 }
 
@@ -28,8 +32,8 @@ local player = {
     h = 44,
     speed = 220,
     vy = 0,
-    gravity = 1300,
-    jumpForce = 520,
+    gravity = 1800,
+    jumpForce = 620,
     onGround = false
 }
 
@@ -50,6 +54,10 @@ end
 
 local function tileKey(tx, ty)
     return tx .. ":" .. ty
+end
+
+local function chunkKey(cx, cy)
+    return cx .. ":" .. cy
 end
 
 local function worldToTileX(px)
@@ -103,17 +111,114 @@ local function getBaseTile(tx, ty)
     return (love.math.noise(tx * 0.12, ty * 0.12, worldSeed + 37) < 0.08) and TILE_DIRT or TILE_STONE
 end
 
+local function getChunk(cx, cy)
+    local key = chunkKey(cx, cy)
+    local chunk = chunks[key]
+    if chunk then
+        return chunk
+    end
+
+    chunk = { tiles = {} }
+    chunks[key] = chunk
+
+    local startTx = cx * CHUNK_SIZE + 1
+    local startTy = cy * CHUNK_SIZE + 1
+
+    for ly = 0, CHUNK_SIZE - 1 do
+        local ty = startTy + ly
+        local row = {}
+        for lx = 0, CHUNK_SIZE - 1 do
+            local tx = startTx + lx
+            row[lx + 1] = getBaseTile(tx, ty)
+        end
+        chunk.tiles[ly + 1] = row
+    end
+
+    return chunk
+end
+
+local function getChunkTile(tx, ty)
+    if ty <= 0 then
+        return TILE_AIR
+    end
+    local cx = math.floor((tx - 1) / CHUNK_SIZE)
+    local cy = math.floor((ty - 1) / CHUNK_SIZE)
+    local chunk = getChunk(cx, cy)
+    local lx = (tx - 1) - cx * CHUNK_SIZE + 1
+    local ly = (ty - 1) - cy * CHUNK_SIZE + 1
+    return chunk.tiles[ly][lx]
+end
+
+local function isTreeAt(tx)
+    local n = love.math.noise(tx * 0.08, worldSeed + 123)
+    if n <= 0.82 then
+        return false
+    end
+    local n2 = love.math.noise((tx - 3) * 0.08, worldSeed + 123)
+    return n2 <= 0.82
+end
+
+local function treeHeight(tx)
+    return 4 + math.floor(love.math.noise(tx * 0.2, worldSeed + 321) * 2)
+end
+
+local function getTreeTile(tx, ty)
+    for ox = -2, 2 do
+        local cx = tx - ox
+        if isTreeAt(cx) then
+            local surface = getSurfaceY(cx)
+            local height = treeHeight(cx)
+            local trunkTop = surface - height
+
+            if tx == cx and ty <= surface - 1 and ty >= trunkTop then
+                return TILE_WOOD
+            end
+
+            local leafTop = trunkTop - 1
+            local leafBottom = trunkTop + 1
+            if ty >= leafTop and ty <= leafBottom then
+                local radius = 2 - math.abs(ty - trunkTop)
+                if math.abs(tx - cx) <= radius then
+                    return TILE_LEAVES
+                end
+            end
+
+            if ty == trunkTop - 2 and math.abs(tx - cx) <= 1 then
+                return TILE_LEAVES
+            end
+        end
+    end
+    return nil
+end
+
 local function getTile(tx, ty)
     local edited = editedTiles[tileKey(tx, ty)]
     if edited ~= nil then
         return edited
     end
-    return getBaseTile(tx, ty)
+    local base = getChunkTile(tx, ty)
+    if base == TILE_AIR then
+        local treeTile = getTreeTile(tx, ty)
+        if treeTile then
+            return treeTile
+        end
+    end
+    return base
 end
 
 local function setTile(tx, ty, tileType)
     local key = tileKey(tx, ty)
-    local base = getBaseTile(tx, ty)
+    local base = getChunkTile(tx, ty)
+    if tileType == TILE_AIR then
+        local hasTree = getTreeTile(tx, ty) ~= nil
+        if base == TILE_AIR and not hasTree then
+            editedTiles[key] = nil
+        else
+            editedTiles[key] = TILE_AIR
+        end
+        return
+    end
+
     if tileType == base then
         editedTiles[key] = nil
     else
@@ -122,7 +227,9 @@ local function setTile(tx, ty, tileType)
 end
 
 local function isSolid(tile)
-    return tile ~= TILE_AIR
+    if tile == TILE_AIR then return false end
+    if tile == TILE_WOOD or tile == TILE_LEAVES then return false end
+    return true
 end
 
 local function refreshGrass(tx, ty)
@@ -153,6 +260,14 @@ local function makeTileTexture(tileType)
                 r, g, b = 0.08, 0.08, 0.09
                 local d = (n - 0.5) * 0.10
                 r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_WOOD then
+                r, g, b = 0.45, 0.30, 0.16
+                local d = (n - 0.5) * 0.10
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_LEAVES then
+                r, g, b = 0.18, 0.55, 0.20
+                local d = (n - 0.5) * 0.18
+                r, g, b = r + d, g + d, b + d
             else
                 local grassTop = (tileType == TILE_GRASS_DIRT and y < 4)
                 if grassTop then
@@ -180,6 +295,8 @@ local function buildTextures()
     textures[TILE_GRASS_DIRT] = makeTileTexture(TILE_GRASS_DIRT)
     textures[TILE_STONE] = makeTileTexture(TILE_STONE)
     textures[TILE_BEDROCK] = makeTileTexture(TILE_BEDROCK)
+    textures[TILE_WOOD] = makeTileTexture(TILE_WOOD)
+    textures[TILE_LEAVES] = makeTileTexture(TILE_LEAVES)
 end
 
 local function moveAndCollide(dt, dirX)
@@ -209,7 +326,9 @@ local function moveAndCollide(dt, dirX)
     end
 
     player.x = newX
+    -- simple gravity with terminal speed
     player.vy = player.vy + player.gravity * dt
+    if player.vy > 1200 then player.vy = 1200 end
     local newY = player.y + player.vy * dt
     player.onGround = false
 
