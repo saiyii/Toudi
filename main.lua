@@ -43,8 +43,30 @@ local coyoteTime = 0.10
 local jumpBufferTimer = 0
 local coyoteTimer = 0
 
+local controls = {
+    layout = "azerty" -- "azerty" or "qwerty"
+}
+
 local function isJumpKey(key)
-    return key == "space" or key == "z" or key == "up" or key == "w"
+    if key == "space" or key == "up" then return true end
+    if controls.layout == "azerty" then
+        return key == "z"
+    else
+        return key == "w"
+    end
+end
+
+local function isLeftDown()
+    if love.keyboard.isDown("left") then return true end
+    if controls.layout == "azerty" then
+        return love.keyboard.isDown("q")
+    else
+        return love.keyboard.isDown("a")
+    end
+end
+
+local function isRightDown()
+    return love.keyboard.isDown("right") or love.keyboard.isDown("d")
 end
 
 local function clamp01(v)
@@ -400,14 +422,17 @@ function love.keypressed(key)
     if isJumpKey(key) then
         jumpBufferTimer = jumpBufferTime
     end
+    if key == "f1" then
+        controls.layout = (controls.layout == "azerty") and "qwerty" or "azerty"
+    end
 end
 
 function love.update(dt)
     local dirX = 0
-    if love.keyboard.isDown("q", "a", "left") then
+    if isLeftDown() then
         dirX = dirX - 1
     end
-    if love.keyboard.isDown("d", "right") then
+    if isRightDown() then
         dirX = dirX + 1
     end
 

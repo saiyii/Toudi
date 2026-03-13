@@ -11,6 +11,7 @@ You can explore an infinite world, dig and place blocks, and see procedural terr
 - Procedural pixel textures (no external images required).
 
 ## Controls
+- Toggle layout: `F1` (AZERTY <-> QWERTY)
 - Move left/right: `Q/D` (AZERTY) or `A/D` (QWERTY) or `Left/Right`
 - Jump: `Z` (AZERTY) or `W` (QWERTY) or `Up` or `Space`
 - Dig: Left click
