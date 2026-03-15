@@ -1,13 +1,13 @@
 # Toudi
 
-Toudi is a 2D sandbox game inspired by Terraria, built from scratch with LÖVE (Love2D).  
+Toudi is a 2D sandbox game inspired by Terraria, built from scratch with LOVE (Love2D).  
 You can explore an infinite world, dig and place blocks, and see procedural terrain with trees.
 
 ## Current Features
 - Infinite horizontal world with chunks and noise-based terrain.
 - Procedural trees (wood + leaves) that render as background.
-- Collision, gravity, jump (with coyote time + jump buffer).
-- Dig and place blocks.
+- Collision, gravity, jump (with coyote time + jump buffer), and Terraria-like movement friction.
+- Dig and place blocks with reach limit and durability-based break time.
 - Procedural pixel textures (no external images required).
 
 ## Controls
@@ -18,21 +18,21 @@ You can explore an infinite world, dig and place blocks, and see procedural terr
 - Place block: Right click
 
 ## Requirements
-- LÖVE (Love2D) 11.x or newer
+- LOVE (Love2D) 11.x or newer
 
 ## How To Run (Windows)
-1. Install LÖVE from the official site:
+1. Install LOVE from the official site:
 ```
 https://love2d.org/
 ```
 2. Open PowerShell and run:
 ```
-cd d:\repos\Terra2D\toudi
-& "C:\Program Files\LOVE\love.exe" "d:\repos\Terra2D\toudi"
+cd <your-path>\Toudi
+& "C:\Program Files\LOVE\love.exe" .
 ```
 
 ## How To Run (macOS)
-1. Install LÖVE:
+1. Install LOVE:
 ```
 https://love2d.org/
 ```
@@ -43,7 +43,7 @@ open -n -a love .
 ```
 
 ## How To Run (Linux)
-1. Install LÖVE with your package manager.
+1. Install LOVE with your package manager.
 2. Run:
 ```
 cd /path/to/Toudi

@@ -16,6 +16,8 @@ local TILE_LEAVES = 6
 local SURFACE_BASE = 14
 local SURFACE_VARIATION = 7
 local BEDROCK_Y = 90
+local REACH_TILES = 5
+local REACH_PX = REACH_TILES * TILE_SIZE
 
 local worldSeed = 0
 local editedTiles = {}
@@ -42,6 +44,14 @@ local jumpBufferTime = 0.12
 local coyoteTime = 0.10
 local jumpBufferTimer = 0
 local coyoteTimer = 0
+
+local breakState = {
+    active = false,
+    tx = 0,
+    ty = 0,
+    timer = 0,
+    duration = 0
+}
 
 local controls = {
     layout = "azerty" -- "azerty" or "qwerty"
@@ -89,6 +99,22 @@ end
 
 local function worldToTileY(py)
     return math.floor(py / TILE_SIZE) + 1
+end
+
+local function tileCenter(tx, ty)
+    return (tx - 0.5) * TILE_SIZE, (ty - 0.5) * TILE_SIZE
+end
+
+local function playerCenter()
+    return player.x + player.w * 0.5, player.y + player.h * 0.5
+end
+
+local function inReach(tx, ty)
+    local cx, cy = tileCenter(tx, ty)
+    local px, py = playerCenter()
+    local dx = cx - px
+    local dy = cy - py
+    return (dx * dx + dy * dy) <= (REACH_PX * REACH_PX)
 end
 
 local function checkCollision(a, b)
@@ -247,6 +273,19 @@ local function setTile(tx, ty, tileType)
     else
         editedTiles[key] = tileType
     end
+end
+
+local function tileDurability(tile)
+    if tile == TILE_DIRT or tile == TILE_GRASS_DIRT then
+        return 0.35
+    elseif tile == TILE_STONE then
+        return 0.9
+    elseif tile == TILE_WOOD then
+        return 0.6
+    elseif tile == TILE_LEAVES then
+        return 0.2
+    end
+    return nil
 end
 
 local function isSolid(tile)
@@ -455,6 +494,38 @@ function love.update(dt)
     local sw, sh = love.graphics.getDimensions()
     camera.x = player.x + player.w * 0.5 - sw * 0.5
     camera.y = player.y + player.h * 0.5 - sh * 0.5
+    camera.x = math.floor(camera.x + 0.5)
+    camera.y = math.floor(camera.y + 0.5)
+
+    if love.mouse.isDown(1) then
+        local mx, my = love.mouse.getPosition()
+        local wx = mx + camera.x
+        local wy = my + camera.y
+        local tx = worldToTileX(wx)
+        local ty = worldToTileY(wy)
+        local tile = getTile(tx, ty)
+        local dur = tileDurability(tile)
+
+        if dur and inReach(tx, ty) then
+            if not breakState.active or breakState.tx ~= tx or breakState.ty ~= ty then
+                breakState.active = true
+                breakState.tx = tx
+                breakState.ty = ty
+                breakState.timer = 0
+                breakState.duration = dur
+            end
+            breakState.timer = breakState.timer + dt
+            if breakState.timer >= breakState.duration then
+                setTile(tx, ty, TILE_AIR)
+                refreshGrass(tx, ty + 1)
+                breakState.active = false
+            end
+        else
+            breakState.active = false
+        end
+    else
+        breakState.active = false
+    end
 end
 
 function love.mousepressed(x, y, button)
@@ -463,14 +534,8 @@ function love.mousepressed(x, y, button)
     local tx = worldToTileX(wx)
     local ty = worldToTileY(wy)
 
-    if button == 1 then
-        local t = getTile(tx, ty)
-        if t ~= TILE_AIR and t ~= TILE_BEDROCK then
-            setTile(tx, ty, TILE_AIR)
-            refreshGrass(tx, ty + 1)
-        end
-    elseif button == 2 then
-        if getTile(tx, ty) == TILE_AIR then
+    if button == 2 then
+        if inReach(tx, ty) and getTile(tx, ty) == TILE_AIR then
             local tileRect = {
                 x = (tx - 1) * TILE_SIZE,
                 y = (ty - 1) * TILE_SIZE,
