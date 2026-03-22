@@ -12,6 +12,26 @@ local TILE_STONE = 3
 local TILE_BEDROCK = 4
 local TILE_WOOD = 5
 local TILE_LEAVES = 6
+local TILE_PLANKS = 7
+local TILE_STICK = 8
+local TILE_CRAFTING_TABLE = 9
+local TILE_CHEST = 10
+local TILE_FURNACE = 11
+local TILE_WOOD_SLAB = 12
+local TILE_STONE_BRICK = 13
+local TILE_DIRT_BRICK = 14
+local TILE_WOOD_WALL = 15
+local TILE_STONE_WALL = 16
+local TILE_LADDER = 17
+local TILE_DOOR = 18
+local TILE_TORCH = 19
+local TILE_GLASS = 20
+local TILE_MOSSY_STONE = 21
+local TILE_DARK_PLANKS = 22
+local TILE_LIGHT_PLANKS = 23
+local TILE_PATH = 24
+local TILE_BRICK_RED = 25
+local TILE_ROCK = 26
 
 local SURFACE_BASE = 14
 local SURFACE_VARIATION = 7
@@ -56,6 +76,51 @@ local breakState = {
 local controls = {
     layout = "azerty" -- "azerty" or "qwerty"
 }
+
+local inventory = {
+    [TILE_DIRT] = 0,
+    [TILE_STONE] = 0,
+    [TILE_WOOD] = 0,
+    [TILE_LEAVES] = 0,
+    [TILE_PLANKS] = 0,
+    [TILE_STICK] = 0,
+    [TILE_CRAFTING_TABLE] = 0,
+    [TILE_CHEST] = 0,
+    [TILE_FURNACE] = 0,
+    [TILE_WOOD_SLAB] = 0,
+    [TILE_STONE_BRICK] = 0,
+    [TILE_DIRT_BRICK] = 0,
+    [TILE_WOOD_WALL] = 0,
+    [TILE_STONE_WALL] = 0,
+    [TILE_LADDER] = 0,
+    [TILE_DOOR] = 0,
+    [TILE_TORCH] = 0,
+    [TILE_GLASS] = 0,
+    [TILE_MOSSY_STONE] = 0,
+    [TILE_DARK_PLANKS] = 0,
+    [TILE_LIGHT_PLANKS] = 0,
+    [TILE_PATH] = 0,
+    [TILE_BRICK_RED] = 0,
+    [TILE_ROCK] = 0
+}
+
+local hotbar = {
+    TILE_DIRT,
+    TILE_STONE,
+    TILE_WOOD,
+    TILE_PLANKS,
+    TILE_STICK,
+    TILE_WOOD_SLAB,
+    TILE_STONE_BRICK,
+    TILE_DIRT_BRICK,
+    TILE_LADDER
+}
+
+local selectedSlot = 1
+
+local craftingOpen = false
+local craftingGrid = { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+local craftingResult = nil
 
 local function isJumpKey(key)
     if key == "space" or key == "up" then return true end
@@ -122,6 +187,151 @@ local function checkCollision(a, b)
            a.x + a.w > b.x and
            a.y < b.y + b.h and
            a.y + a.h > b.y
+end
+
+local function addItem(tile, amount)
+    local count = inventory[tile]
+    if count == nil then return end
+    inventory[tile] = count + amount
+end
+
+local function canSpend(tile, amount)
+    local count = inventory[tile]
+    if count == nil then return false end
+    return count >= amount
+end
+
+local function spendItem(tile, amount)
+    if canSpend(tile, amount) then
+        inventory[tile] = inventory[tile] - amount
+        return true
+    end
+    return false
+end
+
+local function tileToItem(tile)
+    if tile == TILE_GRASS_DIRT then
+        return TILE_DIRT
+    end
+    if inventory[tile] ~= nil then
+        return tile
+    end
+    return nil
+end
+
+local function matchesPattern(grid, pattern)
+    for i = 1, 9 do
+        if grid[i] ~= pattern[i] then
+            return false
+        end
+    end
+    return true
+end
+
+local I = {
+    D = TILE_DIRT,
+    S = TILE_STONE,
+    W = TILE_WOOD,
+    P = TILE_PLANKS,
+    L = TILE_LEAVES,
+    K = TILE_STICK
+}
+
+local recipes = {
+    { pattern = {0,0,0,0,I.W,0,0,0,0}, output = TILE_PLANKS, count = 4 },
+    { pattern = {0,I.P,0,0,I.P,0,0,0,0}, output = TILE_STICK, count = 4 },
+    { pattern = {I.P,I.P,0,I.P,I.P,0,0,0,0}, output = TILE_CRAFTING_TABLE, count = 1 },
+    { pattern = {I.P,I.P,I.P,I.P,0,I.P,I.P,I.P,I.P}, output = TILE_CHEST, count = 1 },
+    { pattern = {I.S,I.S,I.S,I.S,0,I.S,I.S,I.S,I.S}, output = TILE_FURNACE, count = 1 },
+    { pattern = {I.P,I.P,I.P,0,0,0,0,0,0}, output = TILE_WOOD_SLAB, count = 6 },
+    { pattern = {I.S,I.S,I.S,0,0,0,0,0,0}, output = TILE_STONE_BRICK, count = 4 },
+    { pattern = {I.D,I.D,0,I.D,I.D,0,0,0,0}, output = TILE_DIRT_BRICK, count = 4 },
+    { pattern = {I.W,I.W,0,I.W,I.W,0,0,0,0}, output = TILE_WOOD_WALL, count = 4 },
+    { pattern = {I.S,I.S,0,I.S,I.S,0,0,0,0}, output = TILE_STONE_WALL, count = 4 },
+    { pattern = {0,I.K,0,0,I.K,0,0,I.K,0}, output = TILE_LADDER, count = 3 },
+    { pattern = {0,I.P,0,0,I.P,0,0,I.P,0}, output = TILE_DOOR, count = 3 },
+    { pattern = {0,I.W,0,0,I.K,0,0,0,0}, output = TILE_TORCH, count = 4 },
+    { pattern = {I.S,0,I.S,0,I.K,0,I.S,0,I.S}, output = TILE_GLASS, count = 2 },
+    { pattern = {I.S,0,I.S,0,I.D,0,I.S,0,I.S}, output = TILE_MOSSY_STONE, count = 4 },
+    { pattern = {I.P,0,0,I.P,0,0,I.P,0,0}, output = TILE_DARK_PLANKS, count = 6 },
+    { pattern = {0,0,I.P,0,0,I.P,0,0,I.P}, output = TILE_LIGHT_PLANKS, count = 6 },
+    { pattern = {I.D,I.D,I.D,0,0,0,0,0,0}, output = TILE_PATH, count = 6 },
+    { pattern = {I.D,0,I.D,0,I.D,0,I.D,0,I.D}, output = TILE_BRICK_RED, count = 4 },
+    { pattern = {0,I.S,0,I.S,0,I.S,0,I.S,0}, output = TILE_ROCK, count = 4 }
+}
+
+local function updateCraftingResult()
+    for _, r in ipairs(recipes) do
+        if matchesPattern(craftingGrid, r.pattern) then
+            craftingResult = { tile = r.output, count = r.count }
+            return
+        end
+    end
+    craftingResult = nil
+end
+
+local function clearCraftingGrid()
+    for i = 1, 9 do
+        if craftingGrid[i] ~= 0 then
+            addItem(craftingGrid[i], 1)
+            craftingGrid[i] = 0
+        end
+    end
+    craftingResult = nil
+end
+
+local function setCraftingOpen(open)
+    if craftingOpen and not open then
+        clearCraftingGrid()
+    end
+    craftingOpen = open
+end
+
+local function getCraftingUI()
+    local sw, sh = love.graphics.getDimensions()
+    local slot = 32
+    local gap = 6
+    local gridW = slot * 3 + gap * 2
+    local gridH = slot * 3 + gap * 2
+    local panelW, panelH = gridW + slot + 80, gridH + 70
+    local px = math.floor((sw - panelW) / 2)
+    local py = math.floor((sh - panelH) / 2)
+    local gridX = px + 20
+    local gridY = py + 40
+    local outX = gridX + gridW + 30
+    local outY = gridY + math.floor((gridH - slot) / 2)
+
+    return {
+        x = px,
+        y = py,
+        w = panelW,
+        h = panelH,
+        slot = slot,
+        gap = gap,
+        gridX = gridX,
+        gridY = gridY,
+        outX = outX,
+        outY = outY
+    }
+end
+
+local function craftingSlotAt(mx, my)
+    local ui = getCraftingUI()
+    for row = 0, 2 do
+        for col = 0, 2 do
+            local x = ui.gridX + col * (ui.slot + ui.gap)
+            local y = ui.gridY + row * (ui.slot + ui.gap)
+            if mx >= x and mx <= x + ui.slot and my >= y and my <= y + ui.slot then
+                return row * 3 + col + 1
+            end
+        end
+    end
+
+    if mx >= ui.outX and mx <= ui.outX + ui.slot and my >= ui.outY and my <= ui.outY + ui.slot then
+        return "output"
+    end
+
+    return nil
 end
 
 local function getSurfaceY(tx)
@@ -284,8 +494,46 @@ local function tileDurability(tile)
         return 0.6
     elseif tile == TILE_LEAVES then
         return 0.2
+    elseif tile == TILE_PLANKS or tile == TILE_WOOD_SLAB or tile == TILE_DARK_PLANKS or tile == TILE_LIGHT_PLANKS then
+        return 0.45
+    elseif tile == TILE_STICK or tile == TILE_LADDER or tile == TILE_TORCH then
+        return 0.2
+    elseif tile == TILE_CRAFTING_TABLE or tile == TILE_CHEST or tile == TILE_DOOR or tile == TILE_WOOD_WALL then
+        return 0.55
+    elseif tile == TILE_DIRT_BRICK or tile == TILE_PATH then
+        return 0.5
+    elseif tile == TILE_STONE_WALL then
+        return 0.8
+    elseif tile == TILE_STONE_BRICK or tile == TILE_MOSSY_STONE or tile == TILE_BRICK_RED or tile == TILE_ROCK or tile == TILE_FURNACE then
+        return 1.0
+    elseif tile == TILE_GLASS then
+        return 0.25
     end
     return nil
+end
+
+local function saveWorld()
+    local lines = {}
+    for key, tile in pairs(editedTiles) do
+        local tx, ty = key:match("(-?%d+):(-?%d+)")
+        if tx and ty and tile ~= nil then
+            lines[#lines + 1] = tx .. "," .. ty .. "," .. tostring(tile)
+        end
+    end
+    love.filesystem.write("world_edits.txt", table.concat(lines, "\n"))
+end
+
+local function loadWorld()
+    editedTiles = {}
+    if not love.filesystem.getInfo("world_edits.txt") then
+        return
+    end
+    for line in love.filesystem.lines("world_edits.txt") do
+        local tx, ty, tile = line:match("(-?%d+),(-?%d+),(-?%d+)")
+        if tx and ty and tile then
+            editedTiles[tx .. ":" .. ty] = tonumber(tile)
+        end
+    end
 end
 
 local function isSolid(tile)
@@ -313,6 +561,7 @@ local function makeTileTexture(tileType)
         for x = 0, TEX_SIZE - 1 do
             local n = love.math.noise((x + tileType * 19) * 0.28, (y + tileType * 31) * 0.28, worldSeed)
             local r, g, b = 0, 0, 0
+            local a = 1
 
             if tileType == TILE_STONE then
                 r, g, b = 0.45, 0.45, 0.46
@@ -330,6 +579,133 @@ local function makeTileTexture(tileType)
                 r, g, b = 0.18, 0.55, 0.20
                 local d = (n - 0.5) * 0.18
                 r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_PLANKS then
+                r, g, b = 0.55, 0.38, 0.20
+                local stripe = ((y + math.floor(n * 4)) % 4 == 0) and -0.08 or 0
+                local d = (n - 0.5) * 0.10
+                r, g, b = r + d + stripe, g + d + stripe, b + d + stripe
+            elseif tileType == TILE_STICK then
+                r, g, b = 0.56, 0.38, 0.18
+                local d = (n - 0.5) * 0.08
+                if x == 7 or x == 8 then
+                    d = d + 0.10
+                else
+                    d = d - 0.05
+                end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_CRAFTING_TABLE then
+                r, g, b = 0.54, 0.36, 0.18
+                local d = (n - 0.5) * 0.08
+                local line = (x % 5 == 0) or (y % 5 == 0)
+                if line then d = d - 0.08 end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_CHEST then
+                r, g, b = 0.50, 0.32, 0.16
+                local d = (n - 0.5) * 0.08
+                if x == 0 or y == 0 or x == TEX_SIZE - 1 or y == TEX_SIZE - 1 then
+                    d = d - 0.12
+                end
+                if x >= 7 and x <= 8 and y >= 6 and y <= 9 then
+                    r, g, b = 0.25, 0.20, 0.08
+                else
+                    r, g, b = r + d, g + d, b + d
+                end
+            elseif tileType == TILE_FURNACE then
+                r, g, b = 0.36, 0.36, 0.38
+                local d = (n - 0.5) * 0.10
+                if x == 0 or y == 0 or x == TEX_SIZE - 1 or y == TEX_SIZE - 1 then
+                    d = d - 0.12
+                end
+                if x >= 4 and x <= 11 and y >= 6 and y <= 11 then
+                    d = d - 0.10
+                end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_WOOD_SLAB then
+                r, g, b = 0.50, 0.34, 0.18
+                local stripe = ((y + math.floor(n * 5)) % 4 == 0) and -0.06 or 0
+                local d = (n - 0.5) * 0.08
+                r, g, b = r + d + stripe, g + d + stripe, b + d + stripe
+            elseif tileType == TILE_STONE_BRICK then
+                r, g, b = 0.52, 0.52, 0.54
+                local d = (n - 0.5) * 0.10
+                if x % 6 == 0 or y % 6 == 0 then d = d - 0.10 end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_DIRT_BRICK then
+                r, g, b = 0.46, 0.30, 0.14
+                local d = (n - 0.5) * 0.10
+                if x % 6 == 0 or y % 6 == 0 then d = d - 0.08 end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_WOOD_WALL then
+                r, g, b = 0.52, 0.36, 0.18
+                local d = (n - 0.5) * 0.08
+                if x % 4 == 0 then d = d - 0.06 end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_STONE_WALL then
+                r, g, b = 0.48, 0.48, 0.50
+                local d = (n - 0.5) * 0.10
+                if x % 4 == 0 or y % 4 == 0 then d = d - 0.08 end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_LADDER then
+                r, g, b = 0.56, 0.38, 0.20
+                local d = (n - 0.5) * 0.08
+                if x == 3 or x == 12 or y % 4 == 0 then d = d - 0.08 end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_DOOR then
+                r, g, b = 0.52, 0.34, 0.18
+                local d = (n - 0.5) * 0.08
+                if x % 5 == 0 then d = d - 0.08 end
+                if x == 12 and y == 8 then
+                    r, g, b = 0.70, 0.60, 0.30
+                else
+                    r, g, b = r + d, g + d, b + d
+                end
+            elseif tileType == TILE_TORCH then
+                r, g, b = 0.46, 0.30, 0.16
+                local d = (n - 0.5) * 0.10
+                if x >= 7 and x <= 8 and y >= 4 and y <= 6 then
+                    r, g, b = 0.95, 0.75, 0.20
+                else
+                    r, g, b = r + d, g + d, b + d
+                end
+            elseif tileType == TILE_GLASS then
+                r, g, b = 0.60, 0.75, 0.85
+                local d = (n - 0.5) * 0.08
+                if (x + y) % 7 == 0 then d = d + 0.10 end
+                r, g, b = r + d, g + d, b + d
+                a = 0.55
+            elseif tileType == TILE_MOSSY_STONE then
+                r, g, b = 0.46, 0.46, 0.48
+                local d = (n - 0.5) * 0.12
+                if n > 0.6 then
+                    g = g + 0.12
+                end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_DARK_PLANKS then
+                r, g, b = 0.40, 0.26, 0.12
+                local stripe = ((y + math.floor(n * 4)) % 4 == 0) and -0.07 or 0
+                local d = (n - 0.5) * 0.10
+                r, g, b = r + d + stripe, g + d + stripe, b + d + stripe
+            elseif tileType == TILE_LIGHT_PLANKS then
+                r, g, b = 0.66, 0.50, 0.30
+                local stripe = ((y + math.floor(n * 4)) % 4 == 0) and -0.06 or 0
+                local d = (n - 0.5) * 0.08
+                r, g, b = r + d + stripe, g + d + stripe, b + d + stripe
+            elseif tileType == TILE_PATH then
+                r, g, b = 0.52, 0.36, 0.16
+                local d = (n - 0.5) * 0.10
+                if y < 3 and n > 0.6 then
+                    g = g + 0.06
+                end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_BRICK_RED then
+                r, g, b = 0.56, 0.18, 0.16
+                local d = (n - 0.5) * 0.10
+                if x % 6 == 0 or y % 6 == 0 then d = d - 0.10 end
+                r, g, b = r + d, g + d, b + d
+            elseif tileType == TILE_ROCK then
+                r, g, b = 0.30, 0.30, 0.32
+                local d = (n - 0.5) * 0.14
+                r, g, b = r + d, g + d, b + d
             else
                 local grassTop = (tileType == TILE_GRASS_DIRT and y < 4)
                 if grassTop then
@@ -343,7 +719,7 @@ local function makeTileTexture(tileType)
                 end
             end
 
-            data:setPixel(x, y, clamp01(r), clamp01(g), clamp01(b), 1)
+            data:setPixel(x, y, clamp01(r), clamp01(g), clamp01(b), a)
         end
     end
 
@@ -353,12 +729,37 @@ local function makeTileTexture(tileType)
 end
 
 local function buildTextures()
-    textures[TILE_DIRT] = makeTileTexture(TILE_DIRT)
-    textures[TILE_GRASS_DIRT] = makeTileTexture(TILE_GRASS_DIRT)
-    textures[TILE_STONE] = makeTileTexture(TILE_STONE)
-    textures[TILE_BEDROCK] = makeTileTexture(TILE_BEDROCK)
-    textures[TILE_WOOD] = makeTileTexture(TILE_WOOD)
-    textures[TILE_LEAVES] = makeTileTexture(TILE_LEAVES)
+    local tiles = {
+        TILE_DIRT,
+        TILE_GRASS_DIRT,
+        TILE_STONE,
+        TILE_BEDROCK,
+        TILE_WOOD,
+        TILE_LEAVES,
+        TILE_PLANKS,
+        TILE_STICK,
+        TILE_CRAFTING_TABLE,
+        TILE_CHEST,
+        TILE_FURNACE,
+        TILE_WOOD_SLAB,
+        TILE_STONE_BRICK,
+        TILE_DIRT_BRICK,
+        TILE_WOOD_WALL,
+        TILE_STONE_WALL,
+        TILE_LADDER,
+        TILE_DOOR,
+        TILE_TORCH,
+        TILE_GLASS,
+        TILE_MOSSY_STONE,
+        TILE_DARK_PLANKS,
+        TILE_LIGHT_PLANKS,
+        TILE_PATH,
+        TILE_BRICK_RED,
+        TILE_ROCK
+    }
+    for _, t in ipairs(tiles) do
+        textures[t] = makeTileTexture(t)
+    end
 end
 
 local function moveAndCollide(dt, dirX)
@@ -464,6 +865,21 @@ function love.keypressed(key)
     if key == "f1" then
         controls.layout = (controls.layout == "azerty") and "qwerty" or "azerty"
     end
+    if key == "f5" then
+        saveWorld()
+    end
+    if key == "f9" then
+        loadWorld()
+    end
+    if key == "e" then
+        setCraftingOpen(not craftingOpen)
+    end
+    if key == "escape" then
+        setCraftingOpen(false)
+    end
+    if key >= "1" and key <= "9" then
+        selectedSlot = tonumber(key)
+    end
 end
 
 function love.update(dt)
@@ -497,7 +913,7 @@ function love.update(dt)
     camera.x = math.floor(camera.x + 0.5)
     camera.y = math.floor(camera.y + 0.5)
 
-    if love.mouse.isDown(1) then
+    if not craftingOpen and love.mouse.isDown(1) then
         local mx, my = love.mouse.getPosition()
         local wx = mx + camera.x
         local wy = my + camera.y
@@ -516,6 +932,10 @@ function love.update(dt)
             end
             breakState.timer = breakState.timer + dt
             if breakState.timer >= breakState.duration then
+                local drop = tileToItem(tile)
+                if drop then
+                    addItem(drop, 1)
+                end
                 setTile(tx, ty, TILE_AIR)
                 refreshGrass(tx, ty + 1)
                 breakState.active = false
@@ -529,13 +949,43 @@ function love.update(dt)
 end
 
 function love.mousepressed(x, y, button)
+    if craftingOpen then
+        local slot = craftingSlotAt(x, y)
+        if slot == "output" then
+            if craftingResult then
+                addItem(craftingResult.tile, craftingResult.count)
+                for i = 1, 9 do
+                    craftingGrid[i] = 0
+                end
+                craftingResult = nil
+            end
+            return
+        end
+
+        if type(slot) == "number" then
+            if button == 1 and craftingGrid[slot] == 0 then
+                local tile = hotbar[selectedSlot]
+                if tile and spendItem(tile, 1) then
+                    craftingGrid[slot] = tile
+                    updateCraftingResult()
+                end
+            elseif button == 2 and craftingGrid[slot] ~= 0 then
+                addItem(craftingGrid[slot], 1)
+                craftingGrid[slot] = 0
+                updateCraftingResult()
+            end
+            return
+        end
+    end
+
     local wx = x + camera.x
     local wy = y + camera.y
     local tx = worldToTileX(wx)
     local ty = worldToTileY(wy)
 
     if button == 2 then
-        if inReach(tx, ty) and getTile(tx, ty) == TILE_AIR then
+        local placeTile = hotbar[selectedSlot]
+        if placeTile and inReach(tx, ty) and getTile(tx, ty) == TILE_AIR then
             local tileRect = {
                 x = (tx - 1) * TILE_SIZE,
                 y = (ty - 1) * TILE_SIZE,
@@ -543,9 +993,11 @@ function love.mousepressed(x, y, button)
                 h = TILE_SIZE
             }
             if not checkCollision(player, tileRect) then
-                setTile(tx, ty, TILE_DIRT)
-                refreshGrass(tx, ty)
-                refreshGrass(tx, ty + 1)
+                if spendItem(placeTile, 1) then
+                    setTile(tx, ty, placeTile)
+                    refreshGrass(tx, ty)
+                    refreshGrass(tx, ty + 1)
+                end
             end
         end
     end
@@ -580,4 +1032,65 @@ function love.draw()
     love.graphics.pop()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("x:" .. math.floor(player.x) .. " y:" .. math.floor(player.y), 10, 10)
+
+    local slotSize = 32
+    local pad = 6
+    local barX = 10
+    local barY = sh - slotSize - 10
+    for i = 1, #hotbar do
+        local x = barX + (i - 1) * (slotSize + pad)
+        local y = barY
+        if i == selectedSlot then
+            love.graphics.setColor(1, 1, 0.2)
+        else
+            love.graphics.setColor(0.8, 0.8, 0.8)
+        end
+        love.graphics.rectangle("line", x, y, slotSize, slotSize)
+
+        local tile = hotbar[i]
+        local img = textures[tile]
+        if img then
+            love.graphics.setColor(1, 1, 1)
+            local scale = (slotSize - 6) / TEX_SIZE
+            love.graphics.draw(img, x + 3, y + 3, 0, scale, scale)
+        end
+
+        local count = inventory[tile] or 0
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(tostring(count), x + 2, y + slotSize - 14)
+    end
+
+    if craftingOpen then
+        local ui = getCraftingUI()
+        love.graphics.setColor(0, 0, 0, 0.7)
+        love.graphics.rectangle("fill", ui.x, ui.y, ui.w, ui.h)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print("Crafting", ui.x + 10, ui.y + 10)
+
+        for row = 0, 2 do
+            for col = 0, 2 do
+                local idx = row * 3 + col + 1
+                local x = ui.gridX + col * (ui.slot + ui.gap)
+                local y = ui.gridY + row * (ui.slot + ui.gap)
+                love.graphics.rectangle("line", x, y, ui.slot, ui.slot)
+                local tile = craftingGrid[idx]
+                local img = textures[tile]
+                if img then
+                    local scale = (ui.slot - 6) / TEX_SIZE
+                    love.graphics.draw(img, x + 3, y + 3, 0, scale, scale)
+                end
+            end
+        end
+
+        -- output slot
+        love.graphics.rectangle("line", ui.outX, ui.outY, ui.slot, ui.slot)
+        if craftingResult then
+            local img = textures[craftingResult.tile]
+            if img then
+                local scale = (ui.slot - 6) / TEX_SIZE
+                love.graphics.draw(img, ui.outX + 3, ui.outY + 3, 0, scale, scale)
+            end
+            love.graphics.print("x" .. tostring(craftingResult.count), ui.outX + 2, ui.outY + ui.slot - 14)
+        end
+    end
 end
