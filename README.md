@@ -9,6 +9,7 @@ You can explore an infinite world, dig and place blocks, and see procedural terr
 - Collision, gravity, jump (with coyote time + jump buffer), and Terraria-like movement friction.
 - Dig and place blocks with reach limit and durability-based break time.
 - Inventory + hotbar (1-9) with basic counts.
+- Inventory window (toggle with `I`) with a Minecraft-like grid + hotbar row; click to assign items to the selected hotbar slot.
 - Crafting UI (3x3) with 20 recipes.
 - Save/load world edits (F5/F9).
 - Procedural pixel textures for all tiles (no external images required).
@@ -16,6 +17,7 @@ You can explore an infinite world, dig and place blocks, and see procedural terr
 ## Controls
 - Toggle layout: `F1` (AZERTY <-> QWERTY)
 - Open/close crafting: `E`
+- Open/close inventory: `I` (click an item to assign it to the selected hotbar slot)
 - Hotbar select: `1` to `9`
 - Move left/right: `Q/D` (AZERTY) or `A/D` (QWERTY) or `Left/Right`
 - Jump: `Z` (AZERTY) or `W` (QWERTY) or `Up` or `Space`

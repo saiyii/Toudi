@@ -117,6 +117,34 @@ local hotbar = {
 }
 
 local selectedSlot = 1
+local inventoryOpen = false
+
+local inventoryOrder = {
+    TILE_DIRT,
+    TILE_STONE,
+    TILE_WOOD,
+    TILE_LEAVES,
+    TILE_PLANKS,
+    TILE_STICK,
+    TILE_CRAFTING_TABLE,
+    TILE_CHEST,
+    TILE_FURNACE,
+    TILE_WOOD_SLAB,
+    TILE_STONE_BRICK,
+    TILE_DIRT_BRICK,
+    TILE_WOOD_WALL,
+    TILE_STONE_WALL,
+    TILE_LADDER,
+    TILE_DOOR,
+    TILE_TORCH,
+    TILE_GLASS,
+    TILE_MOSSY_STONE,
+    TILE_DARK_PLANKS,
+    TILE_LIGHT_PLANKS,
+    TILE_PATH,
+    TILE_BRICK_RED,
+    TILE_ROCK
+}
 
 local craftingOpen = false
 local craftingGrid = { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
@@ -313,6 +341,58 @@ local function getCraftingUI()
         outX = outX,
         outY = outY
     }
+end
+
+local function getInventoryUI()
+    local sw, sh = love.graphics.getDimensions()
+    local slot = 32
+    local gap = 6
+    local cols = 9
+    local rows = 3
+    local gridW = cols * slot + (cols - 1) * gap
+    local gridH = rows * slot + (rows - 1) * gap
+    local panelW = gridW + 40
+    local panelH = gridH + slot + 90
+    local px = math.floor((sw - panelW) / 2)
+    local py = math.floor((sh - panelH) / 2)
+    local gridX = px + 20
+    local gridY = py + 40
+    local hotbarY = gridY + gridH + 22
+
+    return {
+        x = px,
+        y = py,
+        w = panelW,
+        h = panelH,
+        slot = slot,
+        gap = gap,
+        cols = cols,
+        rows = rows,
+        gridX = gridX,
+        gridY = gridY,
+        hotbarY = hotbarY
+    }
+end
+
+local function inventoryHit(mx, my)
+    local ui = getInventoryUI()
+    for i = 1, ui.cols * ui.rows do
+        local row = math.floor((i - 1) / ui.cols)
+        local col = (i - 1) % ui.cols
+        local x = ui.gridX + col * (ui.slot + ui.gap)
+        local y = ui.gridY + row * (ui.slot + ui.gap)
+        if mx >= x and mx <= x + ui.slot and my >= y and my <= y + ui.slot then
+            return { kind = "grid", index = i }
+        end
+    end
+    for i = 1, #hotbar do
+        local x = ui.gridX + (i - 1) * (ui.slot + ui.gap)
+        local y = ui.hotbarY
+        if mx >= x and mx <= x + ui.slot and my >= y and my <= y + ui.slot then
+            return { kind = "hotbar", index = i }
+        end
+    end
+    return nil
 end
 
 local function craftingSlotAt(mx, my)
@@ -873,9 +953,19 @@ function love.keypressed(key)
     end
     if key == "e" then
         setCraftingOpen(not craftingOpen)
+        if craftingOpen then
+            inventoryOpen = false
+        end
+    end
+    if key == "i" then
+        inventoryOpen = not inventoryOpen
+        if inventoryOpen then
+            setCraftingOpen(false)
+        end
     end
     if key == "escape" then
         setCraftingOpen(false)
+        inventoryOpen = false
     end
     if key >= "1" and key <= "9" then
         selectedSlot = tonumber(key)
@@ -913,7 +1003,7 @@ function love.update(dt)
     camera.x = math.floor(camera.x + 0.5)
     camera.y = math.floor(camera.y + 0.5)
 
-    if not craftingOpen and love.mouse.isDown(1) then
+    if not craftingOpen and not inventoryOpen and love.mouse.isDown(1) then
         local mx, my = love.mouse.getPosition()
         local wx = mx + camera.x
         local wy = my + camera.y
@@ -949,6 +1039,21 @@ function love.update(dt)
 end
 
 function love.mousepressed(x, y, button)
+    if inventoryOpen then
+        local hit = inventoryHit(x, y)
+        if hit and button == 1 then
+            if hit.kind == "hotbar" then
+                selectedSlot = hit.index
+            elseif hit.kind == "grid" then
+                local tile = inventoryOrder[hit.index]
+                if tile and (inventory[tile] or 0) > 0 then
+                    hotbar[selectedSlot] = tile
+                end
+            end
+        end
+        return
+    end
+
     if craftingOpen then
         local slot = craftingSlotAt(x, y)
         if slot == "output" then
@@ -1033,31 +1138,33 @@ function love.draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("x:" .. math.floor(player.x) .. " y:" .. math.floor(player.y), 10, 10)
 
-    local slotSize = 32
-    local pad = 6
-    local barX = 10
-    local barY = sh - slotSize - 10
-    for i = 1, #hotbar do
-        local x = barX + (i - 1) * (slotSize + pad)
-        local y = barY
-        if i == selectedSlot then
-            love.graphics.setColor(1, 1, 0.2)
-        else
-            love.graphics.setColor(0.8, 0.8, 0.8)
-        end
-        love.graphics.rectangle("line", x, y, slotSize, slotSize)
+    if not inventoryOpen then
+        local slotSize = 32
+        local pad = 6
+        local barX = 10
+        local barY = sh - slotSize - 10
+        for i = 1, #hotbar do
+            local x = barX + (i - 1) * (slotSize + pad)
+            local y = barY
+            if i == selectedSlot then
+                love.graphics.setColor(1, 1, 0.2)
+            else
+                love.graphics.setColor(0.8, 0.8, 0.8)
+            end
+            love.graphics.rectangle("line", x, y, slotSize, slotSize)
 
-        local tile = hotbar[i]
-        local img = textures[tile]
-        if img then
+            local tile = hotbar[i]
+            local img = textures[tile]
+            if img then
+                love.graphics.setColor(1, 1, 1)
+                local scale = (slotSize - 6) / TEX_SIZE
+                love.graphics.draw(img, x + 3, y + 3, 0, scale, scale)
+            end
+
+            local count = inventory[tile] or 0
             love.graphics.setColor(1, 1, 1)
-            local scale = (slotSize - 6) / TEX_SIZE
-            love.graphics.draw(img, x + 3, y + 3, 0, scale, scale)
+            love.graphics.print(tostring(count), x + 2, y + slotSize - 14)
         end
-
-        local count = inventory[tile] or 0
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print(tostring(count), x + 2, y + slotSize - 14)
     end
 
     if craftingOpen then
@@ -1091,6 +1198,62 @@ function love.draw()
                 love.graphics.draw(img, ui.outX + 3, ui.outY + 3, 0, scale, scale)
             end
             love.graphics.print("x" .. tostring(craftingResult.count), ui.outX + 2, ui.outY + ui.slot - 14)
+        end
+    end
+
+    if inventoryOpen then
+        local ui = getInventoryUI()
+        love.graphics.setColor(0, 0, 0, 0.8)
+        love.graphics.rectangle("fill", ui.x, ui.y, ui.w, ui.h)
+        love.graphics.setColor(0.15, 0.15, 0.15, 0.9)
+        love.graphics.rectangle("line", ui.x, ui.y, ui.w, ui.h)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print("Inventory", ui.x + 10, ui.y + 10)
+
+        local function drawSlot(x, y, highlight)
+            love.graphics.setColor(0.18, 0.18, 0.18)
+            love.graphics.rectangle("fill", x, y, ui.slot, ui.slot)
+            if highlight then
+                love.graphics.setColor(0.85, 0.85, 0.20)
+            else
+                love.graphics.setColor(0.35, 0.35, 0.35)
+            end
+            love.graphics.rectangle("line", x, y, ui.slot, ui.slot)
+        end
+
+        for i = 1, ui.cols * ui.rows do
+            local row = math.floor((i - 1) / ui.cols)
+            local col = (i - 1) % ui.cols
+            local x = ui.gridX + col * (ui.slot + ui.gap)
+            local y = ui.gridY + row * (ui.slot + ui.gap)
+            drawSlot(x, y, false)
+            local tile = inventoryOrder[i]
+            if tile and (inventory[tile] or 0) > 0 then
+                local img = textures[tile]
+                if img then
+                    local scale = (ui.slot - 6) / TEX_SIZE
+                    love.graphics.setColor(1, 1, 1)
+                    love.graphics.draw(img, x + 3, y + 3, 0, scale, scale)
+                end
+                love.graphics.setColor(1, 1, 1)
+                love.graphics.print(tostring(inventory[tile]), x + 2, y + ui.slot - 14)
+            end
+        end
+
+        for i = 1, #hotbar do
+            local x = ui.gridX + (i - 1) * (ui.slot + ui.gap)
+            local y = ui.hotbarY
+            drawSlot(x, y, i == selectedSlot)
+            local tile = hotbar[i]
+            local img = textures[tile]
+            if img then
+                local scale = (ui.slot - 6) / TEX_SIZE
+                love.graphics.setColor(1, 1, 1)
+                love.graphics.draw(img, x + 3, y + 3, 0, scale, scale)
+            end
+            local count = inventory[tile] or 0
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.print(tostring(count), x + 2, y + ui.slot - 14)
         end
     end
 end
