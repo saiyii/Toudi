@@ -11,6 +11,9 @@ You can explore an infinite world, dig and place blocks, and see procedural terr
 - Inventory + hotbar (1-9) with basic counts.
 - Inventory window (toggle with `I`) with a Minecraft-like grid + hotbar row; click to assign items to the selected hotbar slot.
 - Crafting UI (3x3) with 20 recipes.
+- Friendly mobs (bring food and avoid you) + hostile mobs (chase and hurt you).
+- Health + hunger bars, with food you can eat instantly.
+- Basic combat: click a mob to hit it (within range).
 - Save/load world edits (F5/F9).
 - Procedural pixel textures for all tiles (no external images required).
 
@@ -21,6 +24,8 @@ You can explore an infinite world, dig and place blocks, and see procedural terr
 - Hotbar select: `1` to `9`
 - Move left/right: `Q/D` (AZERTY) or `A/D` (QWERTY) or `Left/Right`
 - Jump: `Z` (AZERTY) or `W` (QWERTY) or `Up` or `Space`
+- Attack mob: Left click on it (within range)
+- Eat food: `F` (when food is selected in the hotbar)
 - Dig: Left click (hold to break)
 - Place block: Right click
 - Save: `F5`

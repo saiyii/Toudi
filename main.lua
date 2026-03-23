@@ -32,12 +32,16 @@ local TILE_LIGHT_PLANKS = 23
 local TILE_PATH = 24
 local TILE_BRICK_RED = 25
 local TILE_ROCK = 26
+local ITEM_FOOD = 27
 
 local SURFACE_BASE = 14
 local SURFACE_VARIATION = 7
 local BEDROCK_Y = 90
 local REACH_TILES = 5
 local REACH_PX = REACH_TILES * TILE_SIZE
+local ATTACK_RANGE = 70
+local ATTACK_COOLDOWN = 0.22
+local ATTACK_DAMAGE = 12
 
 local worldSeed = 0
 local editedTiles = {}
@@ -57,7 +61,13 @@ local player = {
     vy = 0,
     gravity = 1800,
     jumpForce = 620,
-    onGround = false
+    onGround = false,
+    maxHp = 100,
+    hp = 100,
+    maxHunger = 100,
+    hunger = 100,
+    invuln = 0,
+    attackTimer = 0
 }
 
 local jumpBufferTime = 0.12
@@ -72,6 +82,18 @@ local breakState = {
     timer = 0,
     duration = 0
 }
+
+local mobs = {}
+local mobTextures = {}
+local mobSpawnTimer = 0
+local MAX_FRIENDLY = 6
+local MAX_HOSTILE = 5
+
+local FOOD_HUNGER = 28
+local FOOD_HEAL = 6
+local FRIENDLY_GIFT_AMOUNT = 1
+local FRIENDLY_DROP_AMOUNT = 1
+local HOSTILE_DROP_AMOUNT = 2
 
 local controls = {
     layout = "azerty" -- "azerty" or "qwerty"
@@ -101,7 +123,8 @@ local inventory = {
     [TILE_LIGHT_PLANKS] = 0,
     [TILE_PATH] = 0,
     [TILE_BRICK_RED] = 0,
-    [TILE_ROCK] = 0
+    [TILE_ROCK] = 0,
+    [ITEM_FOOD] = 0
 }
 
 local hotbar = {
@@ -143,7 +166,8 @@ local inventoryOrder = {
     TILE_LIGHT_PLANKS,
     TILE_PATH,
     TILE_BRICK_RED,
-    TILE_ROCK
+    TILE_ROCK,
+    ITEM_FOOD
 }
 
 local craftingOpen = false
@@ -245,6 +269,10 @@ local function tileToItem(tile)
         return tile
     end
     return nil
+end
+
+local function isPlaceable(tile)
+    return tile ~= ITEM_FOOD
 end
 
 local function matchesPattern(grid, pattern)
@@ -786,6 +814,20 @@ local function makeTileTexture(tileType)
                 r, g, b = 0.30, 0.30, 0.32
                 local d = (n - 0.5) * 0.14
                 r, g, b = r + d, g + d, b + d
+            elseif tileType == ITEM_FOOD then
+                r, g, b = 0.75, 0.12, 0.12
+                local d = (n - 0.5) * 0.10
+                local dx = x - 7.5
+                local dy = y - 8.5
+                local dist = dx * dx + dy * dy
+                if dist > 46 then
+                    r, g, b = 0.1, 0.1, 0.1
+                else
+                    r, g, b = r + d, g + d, b + d
+                end
+                if y <= 3 and x >= 6 and x <= 9 then
+                    r, g, b = 0.12, 0.55, 0.18
+                end
             else
                 local grassTop = (tileType == TILE_GRASS_DIRT and y < 4)
                 if grassTop then
@@ -835,10 +877,326 @@ local function buildTextures()
         TILE_LIGHT_PLANKS,
         TILE_PATH,
         TILE_BRICK_RED,
-        TILE_ROCK
+        TILE_ROCK,
+        ITEM_FOOD
     }
     for _, t in ipairs(tiles) do
         textures[t] = makeTileTexture(t)
+    end
+end
+
+local function makeMobTexture(kind)
+    local data = love.image.newImageData(TEX_SIZE, TEX_SIZE)
+    for y = 0, TEX_SIZE - 1 do
+        for x = 0, TEX_SIZE - 1 do
+            local n = love.math.noise((x + (kind == "friendly" and 8 or 28)) * 0.22, (y + 11) * 0.22, worldSeed)
+            local r, g, b = 0, 0, 0
+            local inBody = (x >= 3 and x <= 12 and y >= 3 and y <= 14)
+
+            if kind == "friendly" then
+                if inBody then
+                    r, g, b = 0.86, 0.80, 0.72
+                    local d = (n - 0.5) * 0.10
+                    if y >= 10 then d = d - 0.05 end
+                    r, g, b = r + d, g + d, b + d
+                else
+                    r, g, b = 0.1, 0.1, 0.1
+                end
+                -- belly
+                if x >= 5 and x <= 10 and y >= 9 and y <= 12 then
+                    r, g, b = 0.92, 0.87, 0.80
+                end
+                -- eyes
+                if (x == 5 or x == 10) and y == 6 then
+                    r, g, b = 0.08, 0.08, 0.08
+                end
+                -- cheeks
+                if (x == 4 or x == 11) and y == 8 then
+                    r, g, b = 0.92, 0.70, 0.70
+                end
+            else
+                if inBody then
+                    r, g, b = 0.16, 0.50, 0.20
+                    local d = (n - 0.5) * 0.16
+                    if y >= 11 then d = d - 0.05 end
+                    r, g, b = r + d, g + d, b + d
+                else
+                    r, g, b = 0.06, 0.06, 0.06
+                end
+                -- horns
+                if y <= 3 and (x == 4 or x == 11) then
+                    r, g, b = 0.65, 0.65, 0.68
+                end
+                -- eyes
+                if (x == 5 or x == 10) and y == 6 then
+                    r, g, b = 0.85, 0.12, 0.12
+                end
+                -- mouth
+                if x >= 6 and x <= 9 and y == 9 then
+                    r, g, b = 0.10, 0.05, 0.05
+                end
+            end
+
+            -- outline
+            if inBody and (x == 3 or x == 12 or y == 3 or y == 14) then
+                r, g, b = r * 0.7, g * 0.7, b * 0.7
+            end
+
+            data:setPixel(x, y, clamp01(r), clamp01(g), clamp01(b), 1)
+        end
+    end
+    local img = love.graphics.newImage(data)
+    img:setFilter("nearest", "nearest")
+    return img
+end
+
+local function buildMobTextures()
+    mobTextures.friendly = makeMobTexture("friendly")
+    mobTextures.hostile = makeMobTexture("hostile")
+end
+
+local function countMobs(kind)
+    local count = 0
+    for i = 1, #mobs do
+        if mobs[i].kind == kind then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function spawnMob(kind, tx)
+    local h = 24
+    local w = 24
+    local surface = getSurfaceY(tx)
+    local mob = {
+        kind = kind,
+        x = (tx - 1) * TILE_SIZE + (TILE_SIZE - w) * 0.5,
+        y = (surface - 1) * TILE_SIZE - h,
+        w = w,
+        h = h,
+        vx = 0,
+        vy = 0,
+        dir = (love.math.random() < 0.5) and -1 or 1,
+        wanderTimer = love.math.random() * 2,
+        giftCooldown = 3 + love.math.random() * 5,
+        attackCooldown = 0,
+        onGround = false,
+        maxHp = (kind == "hostile") and 40 or 30,
+        hp = (kind == "hostile") and 40 or 30,
+        hitTimer = 0
+    }
+    mobs[#mobs + 1] = mob
+end
+
+local function moveMobAndCollide(mob, dt, dirX)
+    local accel = mob.onGround and 1800 or 1200
+    local friction = mob.onGround and 1400 or 500
+    local maxSpeed = (mob.kind == "hostile") and 140 or 110
+
+    if dirX ~= 0 then
+        mob.vx = mob.vx + dirX * accel * dt
+    else
+        if mob.vx > 0 then
+            mob.vx = math.max(0, mob.vx - friction * dt)
+        elseif mob.vx < 0 then
+            mob.vx = math.min(0, mob.vx + friction * dt)
+        end
+    end
+
+    if mob.vx > maxSpeed then mob.vx = maxSpeed end
+    if mob.vx < -maxSpeed then mob.vx = -maxSpeed end
+
+    local newX = mob.x + mob.vx * dt
+    if mob.vx > 0 then
+        local tileX = worldToTileX(newX + mob.w - 1)
+        local topTile = worldToTileY(mob.y + 1)
+        local bottomTile = worldToTileY(mob.y + mob.h - 2)
+        for ty = topTile, bottomTile do
+            if isSolid(getTile(tileX, ty)) then
+                newX = (tileX - 1) * TILE_SIZE - mob.w
+                mob.vx = 0
+                break
+            end
+        end
+    elseif mob.vx < 0 then
+        local tileX = worldToTileX(newX)
+        local topTile = worldToTileY(mob.y + 1)
+        local bottomTile = worldToTileY(mob.y + mob.h - 2)
+        for ty = topTile, bottomTile do
+            if isSolid(getTile(tileX, ty)) then
+                newX = tileX * TILE_SIZE
+                mob.vx = 0
+                break
+            end
+        end
+    end
+    mob.x = newX
+
+    mob.vy = mob.vy + player.gravity * dt
+    if mob.vy > 900 then mob.vy = 900 end
+    local newY = mob.y + mob.vy * dt
+    mob.onGround = false
+
+    if mob.vy > 0 then
+        local tileY = worldToTileY(newY + mob.h - 1)
+        local leftTile = worldToTileX(mob.x + 1)
+        local rightTile = worldToTileX(mob.x + mob.w - 2)
+        for tx = leftTile, rightTile do
+            if isSolid(getTile(tx, tileY)) then
+                newY = (tileY - 1) * TILE_SIZE - mob.h
+                mob.vy = 0
+                mob.onGround = true
+                break
+            end
+        end
+    elseif mob.vy < 0 then
+        local tileY = worldToTileY(newY)
+        local leftTile = worldToTileX(mob.x + 1)
+        local rightTile = worldToTileX(mob.x + mob.w - 2)
+        for tx = leftTile, rightTile do
+            if isSolid(getTile(tx, tileY)) then
+                newY = tileY * TILE_SIZE
+                mob.vy = 0
+                break
+            end
+        end
+    end
+
+    mob.y = newY
+end
+
+local function updateMobs(dt)
+    local px, py = playerCenter()
+    for i = #mobs, 1, -1 do
+        local mob = mobs[i]
+        mob.wanderTimer = mob.wanderTimer - dt
+        if mob.giftCooldown > 0 then
+            mob.giftCooldown = mob.giftCooldown - dt
+        end
+        if mob.attackCooldown > 0 then
+            mob.attackCooldown = mob.attackCooldown - dt
+        end
+        if mob.hitTimer > 0 then
+            mob.hitTimer = math.max(0, mob.hitTimer - dt)
+        end
+
+        local mx = mob.x + mob.w * 0.5
+        local my = mob.y + mob.h * 0.5
+        local dx = px - mx
+        local dy = py - my
+        local dist2 = dx * dx + dy * dy
+        local dirX = 0
+
+        if mob.kind == "hostile" then
+            if dist2 < 240 * 240 then
+                dirX = (dx > 0) and 1 or -1
+            elseif mob.wanderTimer <= 0 then
+                mob.wanderTimer = 1.2 + love.math.random()
+                mob.dir = (love.math.random() < 0.5) and -1 or 1
+            end
+        else
+            if dist2 < 90 * 90 then
+                dirX = (dx > 0) and -1 or 1
+            elseif mob.giftCooldown <= 0 and dist2 < 150 * 150 then
+                dirX = (dx > 0) and 1 or -1
+            elseif mob.wanderTimer <= 0 then
+                mob.wanderTimer = 1.5 + love.math.random() * 1.5
+                mob.dir = (love.math.random() < 0.5) and -1 or 1
+            end
+        end
+
+        if dirX == 0 and mob.wanderTimer > 0 then
+            dirX = mob.dir
+        end
+
+        if dirX ~= 0 and mob.onGround then
+            local aheadX = mob.x + (dirX > 0 and mob.w + 1 or -1)
+            local footY = mob.y + mob.h - 2
+            local headY = mob.y + 4
+            local tileAhead = getTile(worldToTileX(aheadX), worldToTileY(footY))
+            local tileAbove = getTile(worldToTileX(aheadX), worldToTileY(headY))
+            if isSolid(tileAhead) and not isSolid(tileAbove) then
+                mob.vy = -player.jumpForce * 0.55
+                mob.onGround = false
+            end
+        end
+
+        moveMobAndCollide(mob, dt, dirX)
+
+        if mob.kind == "friendly" and dist2 < 70 * 70 and mob.giftCooldown <= 0 then
+            addItem(ITEM_FOOD, FRIENDLY_GIFT_AMOUNT)
+            mob.giftCooldown = 8 + love.math.random() * 4
+        end
+
+        if mob.kind == "hostile" and checkCollision(mob, player) then
+            if player.invuln <= 0 then
+                player.hp = math.max(0, player.hp - 12)
+                player.invuln = 0.6
+            end
+        end
+
+        if mob.hp <= 0 then
+            if mob.kind == "hostile" then
+                addItem(ITEM_FOOD, HOSTILE_DROP_AMOUNT)
+            else
+                addItem(ITEM_FOOD, FRIENDLY_DROP_AMOUNT)
+            end
+            table.remove(mobs, i)
+        end
+    end
+
+    mobSpawnTimer = mobSpawnTimer - dt
+    if mobSpawnTimer <= 0 then
+        mobSpawnTimer = 3 + love.math.random() * 2
+        local baseTx = worldToTileX(player.x)
+        local offset = love.math.random(10, 28)
+        if love.math.random() < 0.5 then offset = -offset end
+        local tx = baseTx + offset
+
+        if countMobs("friendly") < MAX_FRIENDLY then
+            spawnMob("friendly", tx)
+        elseif countMobs("hostile") < MAX_HOSTILE then
+            spawnMob("hostile", tx)
+        end
+    end
+end
+
+local function drawMobs()
+    for i = 1, #mobs do
+        local mob = mobs[i]
+        local img = mobTextures[mob.kind]
+        if img then
+            local scale = mob.w / TEX_SIZE
+            if mob.hitTimer > 0 then
+                scale = scale * 1.08
+                love.graphics.setColor(1, 0.55, 0.55)
+            else
+                love.graphics.setColor(1, 1, 1)
+            end
+            local drawX = mob.x - (scale * TEX_SIZE - mob.w) * 0.5
+            local drawY = mob.y - (scale * TEX_SIZE - mob.h) * 0.5
+            love.graphics.draw(img, drawX, drawY, 0, scale, scale)
+        else
+            love.graphics.setColor(1, 0, 1)
+            love.graphics.rectangle("fill", mob.x, mob.y, mob.w, mob.h)
+        end
+    end
+end
+
+local function drawBar(x, y, w, h, value, maxValue, r, g, b, label)
+    love.graphics.setColor(0, 0, 0, 0.6)
+    love.graphics.rectangle("fill", x, y, w, h)
+    local ratio = 0
+    if maxValue > 0 then
+        ratio = math.max(0, math.min(1, value / maxValue))
+    end
+    love.graphics.setColor(r, g, b, 0.9)
+    love.graphics.rectangle("fill", x + 1, y + 1, (w - 2) * ratio, h - 2)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", x, y, w, h)
+    if label then
+        love.graphics.print(label .. " " .. math.floor(value), x + 4, y + 1)
     end
 end
 
@@ -925,17 +1283,31 @@ local function moveAndCollide(dt, dirX)
     player.y = newY
 end
 
+local function respawnPlayer()
+    local spawnTileX = 0
+    local spawnSurface = getSurfaceY(spawnTileX)
+    player.x = spawnTileX * TILE_SIZE
+    player.y = (spawnSurface - 3) * TILE_SIZE
+    player.vx = 0
+    player.vy = 0
+    player.hp = player.maxHp
+    player.hunger = player.maxHunger
+    player.invuln = 0
+end
+
 function love.load()
     love.window.setTitle("Toudi")
     love.graphics.setDefaultFilter("nearest", "nearest")
     love.math.setRandomSeed(os.time())
     worldSeed = love.math.random() * 1000
     buildTextures()
+    buildMobTextures()
+    respawnPlayer()
 
-    local spawnTileX = 0
-    local spawnSurface = getSurfaceY(spawnTileX)
-    player.x = spawnTileX * TILE_SIZE
-    player.y = (spawnSurface - 3) * TILE_SIZE
+    for i = 1, 3 do
+        spawnMob("friendly", worldToTileX(player.x) + love.math.random(-12, 12))
+    end
+    spawnMob("hostile", worldToTileX(player.x) + love.math.random(16, 24))
 end
 
 function love.keypressed(key)
@@ -950,6 +1322,13 @@ function love.keypressed(key)
     end
     if key == "f9" then
         loadWorld()
+    end
+    if key == "f" then
+        local tile = hotbar[selectedSlot]
+        if tile == ITEM_FOOD and spendItem(ITEM_FOOD, 1) then
+            player.hunger = math.min(player.maxHunger, player.hunger + FOOD_HUNGER)
+            player.hp = math.min(player.maxHp, player.hp + FOOD_HEAL)
+        end
     end
     if key == "e" then
         setCraftingOpen(not craftingOpen)
@@ -997,13 +1376,25 @@ function love.update(dt)
 
     moveAndCollide(dt, dirX)
 
+    player.invuln = math.max(0, player.invuln - dt)
+    player.attackTimer = math.max(0, player.attackTimer - dt)
+    player.hunger = math.max(0, player.hunger - dt * 1.0)
+    if player.hunger <= 0 then
+        player.hp = math.max(0, player.hp - dt * 6.0)
+    end
+    if player.hp <= 0 then
+        respawnPlayer()
+    end
+
+    updateMobs(dt)
+
     local sw, sh = love.graphics.getDimensions()
     camera.x = player.x + player.w * 0.5 - sw * 0.5
     camera.y = player.y + player.h * 0.5 - sh * 0.5
     camera.x = math.floor(camera.x + 0.5)
     camera.y = math.floor(camera.y + 0.5)
 
-    if not craftingOpen and not inventoryOpen and love.mouse.isDown(1) then
+    if player.attackTimer <= 0 and not craftingOpen and not inventoryOpen and love.mouse.isDown(1) then
         local mx, my = love.mouse.getPosition()
         local wx = mx + camera.x
         local wy = my + camera.y
@@ -1083,6 +1474,41 @@ function love.mousepressed(x, y, button)
         end
     end
 
+    if button == 1 then
+        local wx = x + camera.x
+        local wy = y + camera.y
+        local px, py = playerCenter()
+        if player.attackTimer <= 0 then
+            local bestIndex = nil
+            local bestDist2 = (ATTACK_RANGE * ATTACK_RANGE)
+            for i = 1, #mobs do
+                local mob = mobs[i]
+                if wx >= mob.x and wx <= mob.x + mob.w and wy >= mob.y and wy <= mob.y + mob.h then
+                    local mx = mob.x + mob.w * 0.5
+                    local my = mob.y + mob.h * 0.5
+                    local dx = mx - px
+                    local dy = my - py
+                    local d2 = dx * dx + dy * dy
+                    if d2 <= bestDist2 then
+                        bestDist2 = d2
+                        bestIndex = i
+                    end
+                end
+            end
+
+            if bestIndex then
+                local mob = mobs[bestIndex]
+                mob.hp = mob.hp - ATTACK_DAMAGE
+                local dir = (mob.x + mob.w * 0.5) > px and 1 or -1
+                mob.vx = mob.vx + dir * 220
+                mob.vy = -220
+                mob.hitTimer = 0.12
+                player.attackTimer = ATTACK_COOLDOWN
+                return
+            end
+        end
+    end
+
     local wx = x + camera.x
     local wy = y + camera.y
     local tx = worldToTileX(wx)
@@ -1090,7 +1516,7 @@ function love.mousepressed(x, y, button)
 
     if button == 2 then
         local placeTile = hotbar[selectedSlot]
-        if placeTile and inReach(tx, ty) and getTile(tx, ty) == TILE_AIR then
+        if placeTile and isPlaceable(placeTile) and inReach(tx, ty) and getTile(tx, ty) == TILE_AIR then
             local tileRect = {
                 x = (tx - 1) * TILE_SIZE,
                 y = (ty - 1) * TILE_SIZE,
@@ -1131,12 +1557,16 @@ function love.draw()
         end
     end
 
+    drawMobs()
+
     love.graphics.setColor(1, 0.12, 0.12)
     love.graphics.rectangle("fill", player.x, player.y, player.w, player.h)
 
     love.graphics.pop()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("x:" .. math.floor(player.x) .. " y:" .. math.floor(player.y), 10, 10)
+    drawBar(10, 28, 180, 14, player.hp, player.maxHp, 0.85, 0.2, 0.2, "HP")
+    drawBar(10, 46, 180, 14, player.hunger, player.maxHunger, 0.95, 0.6, 0.12, "Hunger")
 
     if not inventoryOpen then
         local slotSize = 32
